@@ -187,4 +187,88 @@ def run(target_day=None):
                 continue
             if out["cancelled"]:
                 cancellations.append(out)
-            elif best is None or out["delay"] > best["delay"
+                        elif best is None or out["delay"] > best["delay"]:
+                best = {**out, "rid": rid}
+
+        lines = [f"\n{leg['label']} ({leg['origin']} to {leg['destination']}):"]
+
+        if best is None and not cancellations:
+            lines.append("  no usable data")
+        if best is not None:
+            claimable = best["delay"] >= CLAIM_THRESHOLD_MIN
+            op = operator_info(best["toc"])
+            if claimable:
+                anything_to_flag = True
+                lines.append(f"  CLAIMABLE: {best['delay']} min late "
+                             f"(due {best['scheduled_arr']}, "
+                             f"arrived {best['actual_arr']})")
+                lines.append(f"  Operator: {op['name']}, claim here "
+                             f"if this was your train:")
+                lines.append(f"  {op['claim']}")
+            else:
+                lines.append(f"  ok, worst delay {best['delay']} min "
+                             f"({op['name']})")
+            save({"leg_label": leg["label"], "travel_date": day_str,
+                  "rid": best["rid"], "operator": op["name"],
+                  "toc_code": best["toc"], "claim_url": op["claim"],
+                  "scheduled_dep": best["scheduled_dep"],
+                  "scheduled_arr": best["scheduled_arr"],
+                  "actual_arr": best["actual_arr"],
+                  "delay_minutes": best["delay"], "claimable": claimable,
+                  "cancelled_in_window": len(cancellations),
+                  "status": "candidate" if claimable else "no_claim"})
+        if cancellations:
+            anything_to_flag = True
+            ops = ", ".join(sorted({operator_info(c["toc"])["name"]
+                                    for c in cancellations}))
+            times = ", ".join(c.get("scheduled_dep") or "?"
+                              for c in cancellations)
+            lines.append(f"  {len(cancellations)} CANCELLED in window "
+                         f"(dep {times}, {ops}).")
+            lines.append("  If one was your train, your delay is measured to")
+            lines.append("  when the train you actually caught arrived.")
+
+        for ln in lines:
+            print(ln)
+        summary.extend(lines)
+
+    if anything_to_flag:
+        send_telegram("\n".join(summary))
+    else:
+        print("\nNothing claimable, no notification sent.")
+
+
+def run_test(day_str):
+    """End to end test without HSP: fakes one claimable delay and one
+    cancellation, sends the Telegram message, and writes a clearly marked
+    TEST row to Supabase. Delete the TEST rows whenever you like."""
+    print(f"TEST MODE for {day_str}: no HSP call, fake data only\n")
+    op = OPERATORS["SE"]
+    summary = [f"TEST RUN, Delay Repay check, {day_str}",
+               "",
+               "TEST Morning into work (NFL to LBG):",
+               "  CLAIMABLE: 18 min late (due 0742, arrived 0800)",
+               f"  Operator: {op['name']}, claim here if this was your train:",
+               f"  {op['claim']}",
+               "",
+               "TEST Evening home (LBG to NFL):",
+               "  1 CANCELLED in window (dep 1815, Thameslink).",
+               "  If one was your train, check manually.",
+               "",
+               "If you can read this, Telegram works. Check Supabase for",
+               "a TEST row in delay_log, then the pipeline is fully proven."]
+    send_telegram("\n".join(summary))
+    save({"leg_label": "TEST Morning into work", "travel_date": day_str,
+          "rid": "TEST", "operator": op["name"], "toc_code": "SE",
+          "claim_url": op["claim"], "scheduled_dep": "0712",
+          "scheduled_arr": "0742", "actual_arr": "0800",
+          "delay_minutes": 18, "claimable": True,
+          "cancelled_in_window": 0, "status": "dismissed",
+          "notes": "TEST ROW, safe to delete"})
+    print("Test message sent (if Telegram vars set) and TEST row saved",
+          "(if Supabase vars set).")
+
+
+if __name__ == "__main__":
+    run()
+
