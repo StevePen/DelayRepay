@@ -187,7 +187,7 @@ def run(target_day=None):
                 continue
             if out["cancelled"]:
                 cancellations.append(out)
-                        elif best is None or out["delay"] > best["delay"]:
+            elif best is None or out["delay"] > best["delay"]:
                 best = {**out, "rid": rid}
 
         lines = [f"\n{leg['label']} ({leg['origin']} to {leg['destination']}):"]
@@ -271,4 +271,3 @@ def run_test(day_str):
 
 if __name__ == "__main__":
     run()
-
