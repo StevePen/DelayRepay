@@ -34,7 +34,7 @@ import urllib.request
 import urllib.error
 import urllib.parse
 
-HSP_BASE = "https://api1.raildata.org.uk/1010-historical-service-performance-_hsp_v1/api/v1"
+HSP_BASE = "https://api1.raildata.org.uk/1010-historical-service-performance-_hsp_v1/api/v1/serviceDetails"
 CLAIM_THRESHOLD_MIN = 15  # both SE and TL run Delay Repay 15
 RDM_EXPIRY = "2027-06-10"  # HSP agreement renewal date, update after each renewal
 
