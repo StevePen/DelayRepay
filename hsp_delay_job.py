@@ -38,6 +38,7 @@ import urllib.parse
 
 HSP_BASE = "https://hsp-prod.rockshore.net/api/v1"
 CLAIM_THRESHOLD_MIN = 15  # both SE and TL run Delay Repay 15
+RDM_EXPIRY = "2027-06-10"  # HSP agreement renewal date, update after each renewal
 
 HSP_EMAIL = os.environ.get("HSP_EMAIL")
 HSP_PASSWORD = os.environ.get("HSP_PASSWORD")
@@ -79,8 +80,20 @@ def _hsp_post(path, payload):
                  "Authorization": f"Basic {token}"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read().decode())
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            send_telegram(
+                "Delay Repay Bot: RDM credentials have expired or been rejected.\n\n"
+                "Go to raildata.org.uk, open the HSP product page,\n"
+                "copy the new Consumer key and Consumer secret, then\n"
+                "update HSP_EMAIL and HSP_PASSWORD in:\n"
+                "github.com/StevePen/DelayRepay/settings/secrets/actions"
+            )
+            sys.exit("RDM credentials expired, Telegram notified.")
+        raise
 
 
 def _delay_minutes(planned_hhmm, actual_hhmm):
@@ -172,6 +185,7 @@ def run(target_day=None):
     if target_day.weekday() >= 5:
         print(f"{target_day} was a weekend, nothing to check.")
         return
+    check_credential_expiry()
     day_str = target_day.isoformat()
     if TEST_MODE:
         return run_test(day_str)
@@ -238,6 +252,26 @@ def run(target_day=None):
         print("\nNothing claimable, no notification sent.")
 
 
+
+def check_credential_expiry():
+    """Warn via Telegram 60, 30, 14, and 7 days before the RDM agreement expires."""
+    from datetime import date
+    try:
+        expiry = date.fromisoformat(RDM_EXPIRY)
+    except ValueError:
+        return
+    days_left = (expiry - date.today()).days
+    if days_left in (60, 30, 14, 7):
+        send_telegram(
+            f"Delay Repay Bot: your Rail Data Marketplace agreement "
+            f"expires in {days_left} days ({RDM_EXPIRY}).\n\n"
+            f"Go to raildata.org.uk and renew your HSP subscription, "
+            f"then update HSP_EMAIL and HSP_PASSWORD in:\n"
+            f"github.com/StevePen/DelayRepay/settings/secrets/actions"
+        )
+        print(f"Expiry warning sent: {days_left} days remaining.")
+
+
 def run_test(day_str):
     """End to end test without HSP: fakes one claimable delay and one
     cancellation, sends the Telegram message, and writes a clearly marked
@@ -271,3 +305,4 @@ def run_test(day_str):
 
 if __name__ == "__main__":
     run()
+
