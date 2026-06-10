@@ -38,7 +38,7 @@ HSP_BASE = "https://api1.raildata.org.uk/1010-historical-service-performance-_hs
 CLAIM_THRESHOLD_MIN = 15  # both SE and TL run Delay Repay 15
 RDM_EXPIRY = "2027-06-10"  # HSP agreement renewal date, update after each renewal
 
-RDM_KEY    = os.environ.get("HSP_EMAIL")       # paste Consumer key / API key here
+RDM_KEY    = (os.environ.get("HSP_EMAIL") or "").strip()  # API key; .strip() removes stray newline/space
 TG_TOKEN   = os.environ.get("TELEGRAM_BOT_TOKEN")
 TG_CHAT    = os.environ.get("TELEGRAM_CHAT_ID")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -80,14 +80,20 @@ def _hsp_post(path, payload):
         with urllib.request.urlopen(req, timeout=30) as resp:
             return json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
-        if e.code == 401:
+        body = ""
+        try:
+            body = e.read().decode()[:500]
+        except Exception:
+            pass
+        print(f"HSP {path} returned HTTP {e.code}. Key length seen: {len(RDM_KEY)}. Body: {body}")
+        if e.code in (401, 403):
             send_telegram(
-                "Delay Repay Bot: RDM credentials have expired or been rejected.\n\n"
-                "Go to raildata.org.uk, open the HSP product page,\n"
-                "copy the new API key, then update HSP_EMAIL in:\n"
+                f"Delay Repay Bot: RDM access failed (HTTP {e.code}).\n\n"
+                "If this persists, open the HSP product page at raildata.org.uk,\n"
+                "copy the API key again, and update HSP_EMAIL in:\n"
                 "github.com/StevePen/DelayRepay/settings/secrets/actions"
             )
-            sys.exit("RDM credentials expired, Telegram notified.")
+            sys.exit(f"RDM access failed HTTP {e.code}, Telegram notified.")
         raise
 
 
