@@ -73,7 +73,10 @@ def _hsp_post(path, payload):
         f"{HSP_BASE}/{path}",
         data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json",
-                 "x-apikey": RDM_KEY},
+                 "x-apikey": RDM_KEY,
+                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                               "AppleWebKit/537.36 (KHTML, like Gecko) "
+                               "Chrome/124.0 Safari/537.36"},
         method="POST",
     )
     try:
