@@ -69,15 +69,15 @@ JOURNEYS = [
 
 # ---------- HSP ----------
 
+# NEW
 def _hsp_post(path, payload):
-    if not (HSP_EMAIL and HSP_PASSWORD):
-        sys.exit("Set HSP_EMAIL and HSP_PASSWORD (Rail Data Marketplace login).")
-    token = base64.b64encode(f"{HSP_EMAIL}:{HSP_PASSWORD}".encode()).decode()
+    if not RDM_KEY:
+        sys.exit("Set HSP_EMAIL to your RDM API key (from raildata.org.uk HSP product page).")
     req = urllib.request.Request(
         f"{HSP_BASE}/{path}",
         data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json",
-                 "Authorization": f"Basic {token}"},
+                 "x-apikey": RDM_KEY},
         method="POST",
     )
     try:
