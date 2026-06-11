@@ -50,7 +50,7 @@ OPERATORS = {
     "SE": {"name": "Southeastern",
            "claim": "https://www.southeasternrailway.co.uk/help-and-contact/delay-repay"},
     "TL": {"name": "Thameslink",
-           "claim": "https://www.thameslinkrailway.com/help-and-support/delay-repay"},
+           "claim": "https://delayrepay.thameslinkrailway.com/customer"},
 }
 FALLBACK_OPERATOR = {"name": "Unknown operator",
                      "claim": "https://www.nationalrail.co.uk/travel-information/delay-repay/"}
@@ -169,10 +169,17 @@ def operator_info(toc):
 def send_telegram(text):
     if not (TG_TOKEN and TG_CHAT):
         return
-    data = urllib.parse.urlencode({"chat_id": TG_CHAT, "text": text,
-                                   "disable_web_page_preview": "true"}).encode()
+    import json as _json
+    payload = _json.dumps({
+        "chat_id": TG_CHAT,
+        "text": text,
+        "link_preview_options": {"is_disabled": True}
+    }).encode()
+    data = payload
     req = urllib.request.Request(
-        f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage", data=data)
+        f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
+        data=data,
+        headers={"Content-Type": "application/json"})
     try:
         urllib.request.urlopen(req, timeout=30)
     except urllib.error.HTTPError as e:
@@ -228,8 +235,9 @@ def run(target_day=None):
     if TEST_MODE:
         return run_test(day_str)
     print(f"Checking commute for {day_str}\n")
-    summary = [f"Delay Repay check, {day_str}"]
+    summary = [f"Delay Repay check, {day_str}", ""]
     anything_to_flag = False
+    claim_links = set()
 
     for leg in JOURNEYS:
         best, cancellations = None, []
@@ -242,24 +250,18 @@ def run(target_day=None):
             elif best is None or out["delay"] > best["delay"]:
                 best = {**out, "rid": rid}
 
-        lines = [f"\n{leg['label']} ({leg['origin']} to {leg['destination']}):"]
+        lines = [f"\n{leg['origin']} to {leg['destination']}:"]
 
         if best is None and not cancellations:
-            lines.append("  no usable data")
+            lines.append("  no data")
         if best is not None:
             claimable = best["delay"] >= CLAIM_THRESHOLD_MIN
             op = operator_info(best["toc"])
             if claimable:
                 anything_to_flag = True
-                lines.append(f"  CLAIMABLE: {best['delay']} min late "
-                             f"(due {best['scheduled_arr']}, "
-                             f"arrived {best['actual_arr']})")
-                lines.append(f"  Operator: {op['name']}, claim here "
-                             f"if this was your train:")
-                lines.append(f"  {op['claim']}")
-            else:
-                lines.append(f"  ok, worst delay {best['delay']} min "
-                             f"({op['name']})")
+                lines.append("CLAIMABLE:")
+                lines.append(f"{best['delay']} min late (due {best['scheduled_arr']}) - {op['name']}")
+                claim_links.add(op["claim"])
             save({"leg_label": leg["label"], "travel_date": day_str,
                   "rid": best["rid"], "operator": op["name"],
                   "toc_code": best["toc"], "claim_url": op["claim"],
@@ -271,21 +273,23 @@ def run(target_day=None):
                   "status": "candidate" if claimable else "no_claim"})
         if cancellations:
             anything_to_flag = True
-            ops = ", ".join(sorted({operator_info(c["toc"])["name"]
-                                    for c in cancellations}))
-            times = ", ".join(c.get("scheduled_dep") or "?"
-                              for c in cancellations)
-            lines.append(f"  {len(cancellations)} CANCELLED in window "
-                         f"(dep {times}, {ops}).")
-            lines.append("  If one was your train, your delay is measured to")
-            lines.append("  when the train you actually caught arrived.")
+            for c in cancellations:
+                op = operator_info(c["toc"])
+                dep = c.get("scheduled_dep") or "?"
+                lines.append("CANCELLED:")
+                lines.append(f"dep {dep} - {op['name']}")
 
         for ln in lines:
             print(ln)
         summary.extend(lines)
 
     if anything_to_flag:
-        send_telegram("\n".join(summary))
+        msg_lines = summary[:]
+        if claim_links:
+            msg_lines.append("")
+            for link in sorted(claim_links):
+                msg_lines.append(link)
+        send_telegram("\n".join(msg_lines))
     else:
         print("\nNothing claimable, no notification sent.")
 
