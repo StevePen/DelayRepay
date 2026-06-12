@@ -92,6 +92,7 @@ def _hsp_post(path, payload):
             except Exception:
                 pass
             print(f"HSP {path} returned HTTP {e.code}. Key length seen: {len(RDM_KEY)}. Body: {body}")
+            # Auth errors are fatal
             if e.code in (401, 403):
                 send_telegram(
                     f"Delay Repay Bot: RDM access failed (HTTP {e.code}).\n\n"
@@ -100,13 +101,22 @@ def _hsp_post(path, payload):
                     "github.com/StevePen/DelayRepay/settings/secrets/actions"
                 )
                 sys.exit(f"RDM access failed HTTP {e.code}, Telegram notified.")
+            # 5xx errors are transient, retry
+            if 500 <= e.code < 600:
+                last_err = e
+                if attempt < 2:
+                    print(f"HSP {path} got HTTP {e.code}, retrying (attempt {attempt + 1}/3)...")
+                    time.sleep(5)
+                continue
             raise
         except (TimeoutError, urllib.error.URLError, OSError) as e:
             last_err = e
-            print(f"HSP {path} attempt {attempt + 1} timed out or failed, retrying...")
-            time.sleep(3)
+            if attempt < 2:
+                print(f"HSP {path} attempt {attempt + 1} timed out or failed, retrying...")
+                time.sleep(5)
+            continue
     # All retries exhausted: give up on THIS call, not the whole run.
-    print(f"HSP {path} failed after retries: {last_err}")
+    print(f"HSP {path} failed after 3 attempts: {last_err}")
     return None
 
 
