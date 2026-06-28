@@ -21,8 +21,6 @@ Environment variables:
   HSP_EMAIL              RDM API key (x-apikey) from raildata.org.uk HSP page
   TELEGRAM_BOT_TOKEN     bot token from BotFather              (optional)
   TELEGRAM_CHAT_ID       your chat id from getUpdates          (optional)
-  SUPABASE_URL           e.g. https://xxxx.supabase.co         (optional)
-  SUPABASE_SERVICE_KEY   service role key for the ledger       (optional)
   TEST_MODE              set to 1 to fake data, no HSP needed  (optional)
 """
 
@@ -42,8 +40,6 @@ RDM_EXPIRY = "2027-06-10"  # HSP agreement renewal date, update after each renew
 RDM_KEY    = (os.environ.get("HSP_EMAIL") or "").strip()  # API key; .strip() removes stray newline/space
 TG_TOKEN   = os.environ.get("TELEGRAM_BOT_TOKEN")
 TG_CHAT    = os.environ.get("TELEGRAM_CHAT_ID")
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
 TEST_MODE  = os.environ.get("TEST_MODE", "").lower() in ("1", "true", "yes")
 
 OPERATORS = {
@@ -196,25 +192,6 @@ def send_telegram(text):
         print(f"  ! telegram send failed: {e.read().decode()}")
 
 
-def save(record):
-    if not (SUPABASE_URL and SUPABASE_KEY):
-        return
-    req = urllib.request.Request(
-        f"{SUPABASE_URL}/rest/v1/delay_log?on_conflict=leg_label,travel_date",
-        data=json.dumps(record).encode(),
-        headers={"Content-Type": "application/json", "apikey": SUPABASE_KEY,
-                 "Authorization": f"Bearer {SUPABASE_KEY}",
-                 "Prefer": "resolution=merge-duplicates"},
-        method="POST",
-    )
-    try:
-        urllib.request.urlopen(req, timeout=30)
-    except urllib.error.HTTPError as e:
-        print(f"  ! could not save: {e.read().decode()}")
-
-
-# ---------- Expiry check ----------
-
 def check_credential_expiry():
     """Warn via Telegram 30, 14, and 7 days before the RDM agreement expires."""
     try:
@@ -272,15 +249,6 @@ def run(target_day=None):
                 lines.append("CLAIMABLE:")
                 lines.append(f"{best['delay']} min late (due {best['scheduled_arr']}) - {op['name']}")
                 claim_links.add(op["claim"])
-            save({"leg_label": leg["label"], "travel_date": day_str,
-                  "rid": best["rid"], "operator": op["name"],
-                  "toc_code": best["toc"], "claim_url": op["claim"],
-                  "scheduled_dep": best["scheduled_dep"],
-                  "scheduled_arr": best["scheduled_arr"],
-                  "actual_arr": best["actual_arr"],
-                  "delay_minutes": best["delay"], "claimable": claimable,
-                  "cancelled_in_window": len(cancellations),
-                  "status": "candidate" if claimable else "no_claim"})
         if cancellations:
             anything_to_flag = True
             for c in cancellations:
@@ -324,13 +292,6 @@ def run_test(day_str):
                "If you can read this, Telegram works. Check Supabase for",
                "a TEST row in delay_log, then the pipeline is fully proven."]
     send_telegram("\n".join(summary))
-    save({"leg_label": "TEST Morning into work", "travel_date": day_str,
-          "rid": "TEST", "operator": op["name"], "toc_code": "SE",
-          "claim_url": op["claim"], "scheduled_dep": "0712",
-          "scheduled_arr": "0742", "actual_arr": "0800",
-          "delay_minutes": 18, "claimable": True,
-          "cancelled_in_window": 0, "status": "dismissed",
-          "notes": "TEST ROW, safe to delete"})
     print("Test message sent (if Telegram vars set) and TEST row saved",
           "(if Supabase vars set).")
 
